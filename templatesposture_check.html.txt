@@ -1,0 +1,117 @@
+templates/posture_check.html
+
+{% extends "base.html" %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <h2 class="text-center">Device Security Check</h2>
+        
+        <div class="card">
+            <div class="card-body">
+                <div id="checking" class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-3">Checking your device security...</p>
+                </div>
+                
+                <div id="results" style="display: none;">
+                    <h5>Check Results:</h5>
+                    <ul class="list-group mb-3">
+                        <li class="list-group-item" id="av-result">
+                            🔄 Antivirus: Checking...
+                        </li>
+                        <li class="list-group-item" id="encrypt-result">
+                            🔄 Disk Encryption: Checking...
+                        </li>
+                        <li class="list-group-item" id="os-result">
+                            🔄 Operating System: Checking...
+                        </li>
+                    </ul>
+                    
+                    <div id="compliant-message" class="alert alert-success" style="display: none;">
+                        ✅ Your device is compliant. Redirecting to dashboard...
+                    </div>
+                    
+                    <div id="noncompliant-message" class="alert alert-danger" style="display: none;">
+                        ❌ Your device is not compliant.
+                        <ul id="reasons-list"></ul>
+                        <hr>
+                        <p>Please fix the issues above and try again.</p>
+                        <button onclick="location.reload()" class="btn btn-primary">Retry Check</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+async function checkDevicePosture() {
+    try {
+        const response = await fetch('/posture/api/check', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'}
+        });
+        const data = await response.json();
+        
+        // Update UI with results
+        if (data.details.antivirus.status === 'running') {
+            document.getElementById('av-result').innerHTML = '✅ Antivirus: Running (' + (data.details.antivirus.product || 'Windows Defender') + ')';
+            document.getElementById('av-result').classList.add('list-group-item-success');
+        } else {
+            document.getElementById('av-result').innerHTML = '❌ Antivirus: Not running';
+            document.getElementById('av-result').classList.add('list-group-item-danger');
+        }
+        
+        if (data.details.disk_encryption.status === 'encrypted') {
+            document.getElementById('encrypt-result').innerHTML = '✅ Disk Encryption: Enabled';
+            document.getElementById('encrypt-result').classList.add('list-group-item-success');
+        } else {
+            document.getElementById('encrypt-result').innerHTML = '❌ Disk Encryption: Not enabled';
+            document.getElementById('encrypt-result').classList.add('list-group-item-danger');
+        }
+        
+        if (data.details.os.is_supported) {
+            document.getElementById('os-result').innerHTML = '✅ OS Version: ' + data.details.os.release + ' (Supported)';
+            document.getElementById('os-result').classList.add('list-group-item-success');
+        } else {
+            document.getElementById('os-result').innerHTML = '❌ OS Version: ' + data.details.os.release + ' (Not supported)';
+            document.getElementById('os-result').classList.add('list-group-item-danger');
+        }
+        
+        document.getElementById('checking').style.display = 'none';
+        document.getElementById('results').style.display = 'block';
+        
+        if (data.is_compliant) {
+            document.getElementById('compliant-message').style.display = 'block';
+            // Complete login
+            const completeResponse = await fetch('/posture/complete', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({is_compliant: true})
+            });
+            const completeData = await completeResponse.json();
+            if (completeData.success) {
+                setTimeout(() => {
+                    window.location.href = completeData.redirect;
+                }, 2000);
+            }
+        } else {
+            document.getElementById('noncompliant-message').style.display = 'block';
+            const reasonsList = document.getElementById('reasons-list');
+            data.reasons.forEach(reason => {
+                const li = document.createElement('li');
+                li.textContent = reason;
+                reasonsList.appendChild(li);
+            });
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        document.getElementById('checking').innerHTML = '<div class="alert alert-danger">Error checking device. Please try again.</div>';
+    }
+}
+
+checkDevicePosture();
+</script>
+{% endblock %}

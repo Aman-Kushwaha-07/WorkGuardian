@@ -1,0 +1,71 @@
+templates/dashboard.html
+
+{% extends "base.html" %}
+{% block content %}
+<div class="row">
+    <div class="col-md-8 mx-auto">
+        <div class="card">
+            <div class="card-header bg-success text-white">
+                <h3 class="mb-0">Welcome, {{ current_user.username }}!</h3>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <strong>✅ You are securely logged in to WorkGuardian.</strong>
+                </div>
+                
+                <h4>Your Security Status</h4>
+                <table class="table table-bordered">
+                    <tr>
+                        <th>MFA Status:</th>
+                        <td>
+                            {% if current_user.mfa_enabled %}
+                                <span class="badge bg-success">Enabled ✓</span>
+                            {% else %}
+                                <span class="badge bg-warning">Not Enabled</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Account Created:</th>
+                        <td>{{ current_user.created_at.strftime('%Y-%m-%d %H:%M') if current_user.created_at else 'N/A' }}</td>
+                    </tr>
+                    <tr>
+                        <th>Account Type:</th>
+                        <td>
+                            {% if current_user.is_admin %}
+                                <span class="badge bg-danger">Administrator</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Regular User</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                </table>
+                
+                {% if current_user.is_admin %}
+                <div class="mt-4">
+                    <a href="{{ url_for('admin.admin_dashboard') }}" class="btn btn-danger">Go to Admin Dashboard</a>
+                </div>
+                {% endif %}
+                
+                <div class="mt-4">
+                    <a href="{{ url_for('auth.logout') }}" class="btn btn-secondary">Logout</a>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card mt-4">
+            <div class="card-header bg-secondary text-white">
+                <h4>About WorkGuardian</h4>
+            </div>
+            <div class="card-body">
+                <p>WorkGuardian provides two layers of security for remote work:</p>
+                <ul>
+                    <li><strong>Multi-Factor Authentication (MFA)</strong> - TOTP-based using Google Authenticator or any compatible app</li>
+                    <li><strong>Device Posture Validation</strong> - Checks antivirus, disk encryption, and OS version</li>
+                </ul>
+                <p class="mb-0">Only authenticated users from compliant devices can access this system.</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

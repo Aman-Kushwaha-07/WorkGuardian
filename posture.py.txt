@@ -1,0 +1,162 @@
+posture.py
+
+from flask import Blueprint, render_template, request, jsonify, session
+from flask_login import login_required, current_user, login_user
+import subprocess
+import platform
+import json
+from models import User, AuditLog
+from app import db
+
+posture_bp = Blueprint('posture', __name__, url_prefix='/posture')
+
+def check_antivirus_windows():
+    """Check if Windows Defender or third-party antivirus is running"""
+    try:
+        cmd = ['powershell', '-Command', 
+               'Get-MpComputerStatus | Select-Object -ExpandProperty AntivirusEnabled']
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        
+        if result.stdout.strip() == 'True':
+            return {'status': 'running', 'product': 'Windows Defender'}
+        
+        # Check for other antivirus products
+        cmd2 = ['powershell', '-Command',
+                'Get-WmiObject -Namespace "root\\SecurityCenter2" -Class "AntiVirusProduct" | Select-Object -ExpandProperty displayName']
+        result2 = subprocess.run(cmd2, capture_output=True, text=True, timeout=10)
+        
+        if result2.stdout.strip():
+            return {'status': 'running', 'product': result2.stdout.strip().split('\n')[0]}
+        
+        return {'status': 'not_found', 'product': None}
+    except Exception as e:
+        return {'status': 'error', 'error': str(e)}
+
+def check_disk_encryption_windows():
+    """Check if BitLocker disk encryption is enabled on system drive"""
+    try:
+        cmd = ['manage-bde', '-status', 'C:']
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        output = result.stdout
+        
+        if 'Protection Status:' in output:
+            if 'Protection On' in output:
+                return {'status': 'encrypted', 'percentage': 100}
+        
+        if 'Percentage Encrypted' in output:
+            import re
+            match = re.search(r'Percentage Encrypted:\s*(\d+(?:\.\d+)?)%', output)
+            if match:
+                percentage = float(match.group(1))
+                if percentage >= 99.9:
+                    return {'status': 'encrypted', 'percentage': percentage}
+                else:
+                    return {'status': 'partial', 'percentage': percentage}
+        
+        return {'status': 'not_encrypted', 'percentage': 0}
+    except Exception as e:
+        return {'status': 'error', 'error': str(e)}
+
+def check_os_version():
+    """Get operating system version information"""
+    try:
+        version = platform.version()
+        release = platform.release()
+        
+        is_supported = True
+        if '10.0.' in version:
+            build = int(version.split('.')[-1]) if version.split('.')[-1].isdigit() else 0
+            if build < 19041:
+                is_supported = False
+        
+        return {
+            'system': platform.system(),
+            'release': release,
+            'version': version,
+            'is_supported': is_supported
+        }
+    except Exception as e:
+        return {'error': str(e)}
+
+def evaluate_device_compliance():
+    """Evaluate overall device compliance"""
+    results = {
+        'antivirus': check_antivirus_windows(),
+        'disk_encryption': check_disk_encryption_windows(),
+        'os': check_os_version()
+    }
+    
+    is_compliant = True
+    reasons = []
+    
+    if results['antivirus']['status'] not in ['running']:
+        is_compliant = False
+        reasons.append('Antivirus not running or not found')
+    
+    if results['disk_encryption']['status'] not in ['encrypted']:
+        is_compliant = False
+        reasons.append('Disk encryption not enabled (BitLocker required)')
+    
+    if results['os'].get('is_supported') is False:
+        is_compliant = False
+        reasons.append('Operating system version not supported (Windows 10/11 required)')
+    
+    return {
+        'is_compliant': is_compliant,
+        'reasons': reasons,
+        'details': results
+    }
+
+@posture_bp.route('/check-page')
+@login_required
+def check_posture_page():
+    """Display the device posture check page"""
+    return render_template('posture_check.html')
+
+@posture_bp.route('/api/check', methods=['POST'])
+@login_required
+def api_check_posture():
+    """API endpoint for device posture checking"""
+    compliance = evaluate_device_compliance()
+    
+    # Log the posture check result
+    log = AuditLog(
+        user_id=current_user.id,
+        event_type='posture_check',
+        status='passed' if compliance['is_compliant'] else 'failed',
+        details=json.dumps(compliance['reasons']),
+        ip_address=request.remote_addr
+    )
+    db.session.add(log)
+    db.session.commit()
+    
+    return jsonify(compliance)
+
+@posture_bp.route('/complete', methods=['POST'])
+@login_required
+def complete_posture_check():
+    """Complete the posture check and complete login"""
+    data = request.get_json()
+    is_compliant = data.get('is_compliant', False)
+    
+    if is_compliant:
+        # Complete the login process
+        user_id = session.get('pre_auth_user_id')
+        if user_id:
+            user = User.query.get(user_id)
+            login_user(user)
+            session.pop('pre_auth_user_id', None)
+            
+            # Log successful login
+            log = AuditLog(
+                user_id=user.id,
+                event_type='login',
+                status='success',
+                ip_address=request.remote_addr
+            )
+            db.session.add(log)
+            db.session.commit()
+            
+            return jsonify({'success': True, 'redirect': '/dashboard'})
+    
+    return jsonify({'success': False, 'message': 'Device not compliant'})

@@ -1,0 +1,51 @@
+mfa.py
+
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify
+from flask_login import login_required, current_user
+import pyotp
+import qrcode
+from io import BytesIO
+import base64
+from models import User
+from app import db
+
+mfa_bp = Blueprint('mfa', __name__, url_prefix='/mfa')
+
+def generate_qr_code(secret, email):
+    totp_uri = pyotp.totp.TOTP(secret).provisioning_uri(email, issuer_name="WorkGuardian")
+    qr = qrcode.make(totp_uri)
+    buffered = BytesIO()
+    qr.save(buffered, format="PNG")
+    return base64.b64encode(buffered.getvalue()).decode()
+
+@mfa_bp.route('/setup/<int:user_id>')
+def setup_mfa(user_id):
+    user = User.query.get(user_id)
+    secret = pyotp.random_base32()
+    session['temp_secret'] = secret
+    qr_code = generate_qr_code(secret, user.email)
+    return render_template('mfa_setup.html', qr_code=qr_code, secret=secret)
+
+@mfa_bp.route('/verify-setup', methods=['POST'])
+def verify_setup():
+    data = request.get_json()
+    otp = data.get('otp')
+    secret = session.get('temp_secret')
+    
+    if not secret:
+        return jsonify({'success': False, 'message': 'Session expired'})
+    
+    totp = pyotp.TOTP(secret)
+    if totp.verify(otp):
+        user_id = session.get('user_id')
+        user = User.query.get(user_id)
+        if user:
+            user.totp_secret = secret
+            user.mfa_enabled = True
+            db.session.commit()
+            return jsonify({'success': True})
+    return jsonify({'success': False})
+
+@mfa_bp.route('/verify-page')
+def verify_mfa_page():
+    return render_template('mfa_verify.html')

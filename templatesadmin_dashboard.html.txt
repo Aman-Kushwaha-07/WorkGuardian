@@ -1,0 +1,50 @@
+templates/admin_dashboard.html
+
+{% extends "base.html" %}
+{% block content %}
+<h2>Admin Dashboard</h2>
+
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card text-white bg-primary">
+            <div class="card-body">
+                <h5>Total Users</h5>
+                <h2>{{ total_users }}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-success">
+            <div class="card-body">
+                <h5>MFA Enabled</h5>
+                <h2>{{ mfa_enabled_count }}</h2>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h4>Audit Logs</h4>
+        <a href="{{ url_for('admin.export_logs') }}" class="btn btn-sm btn-secondary">Export CSV</a>
+    </div>
+    <div class="card-body">
+        <table class="table table-striped">
+            <thead>
+                <tr><th>Timestamp</th><th>User ID</th><th>Event</th><th>Status</th><th>IP</th></tr>
+            </thead>
+            <tbody>
+                {% for log in logs %}
+                <tr>
+                    <td>{{ log.timestamp }}</td>
+                    <td>{{ log.user_id }}</td>
+                    <td>{{ log.event_type }}</td>
+                    <td>{{ log.status }}</td>
+                    <td>{{ log.ip_address }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

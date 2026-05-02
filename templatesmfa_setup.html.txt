@@ -1,0 +1,46 @@
+templates/mfa_setup.html
+
+{% extends "base.html" %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <h2 class="text-center">Enable Multi-Factor Authentication</h2>
+        
+        <div class="text-center mb-4">
+            <p>Scan this QR code with Google Authenticator:</p>
+            <img src="data:image/png;base64,{{ qr_code }}" class="img-fluid w-50">
+        </div>
+        
+        <div class="card bg-light p-3 mb-3 text-center">
+            <small>Or enter this secret key manually:</small><br>
+            <code class="fs-6">{{ secret }}</code>
+        </div>
+        
+        <div class="mb-3">
+            <label>Enter verification code from app:</label>
+            <input type="text" id="otp" class="form-control" placeholder="6-digit code">
+        </div>
+        
+        <button onclick="verifyMFA()" class="btn btn-primary w-100">Verify & Enable</button>
+    </div>
+</div>
+
+<script>
+function verifyMFA() {
+    const otp = document.getElementById('otp').value;
+    fetch('/mfa/verify-setup', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({otp: otp})
+    })
+    .then(res => res.json())
+    .then(data => {
+        if(data.success) {
+            window.location.href = '/dashboard';
+        } else {
+            alert('Invalid OTP. Try again.');
+        }
+    });
+}
+</script>
+{% endblock %}
